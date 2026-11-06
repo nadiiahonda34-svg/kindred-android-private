@@ -1,0 +1,84 @@
+name: Kindred 1.0.35 Android build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/kindred-android-1-0-35.yml
+      - android-source/Kindred_1_0_35_Unified_Source.zip
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: SDK check and Android build
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+
+      - name: Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android command-line tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: 'false'
+
+      - name: Install Android SDK API 37
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platform-tools" "platforms;android-37.0" "build-tools;36.0.0" --channel=3
+          test -f "${ANDROID_HOME}/platforms/android-37.0/android.jar"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/aapt2"
+          echo "### Android SDK successfully installed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Platform: API 37, Build Tools: 36.0.0" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check for archived source
+        id: source
+        shell: bash
+        run: |
+          if [[ -f android-source/Kindred_1_0_35_Unified_Source.zip ]]; then
+            mkdir -p work
+            unzip -q android-source/Kindred_1_0_35_Unified_Source.zip -d work
+            test -f work/Kindred_1_0_35_Unified/gradlew
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Android source ZIP located; building Kindred 1.0.35." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "SDK verified. Source archive not uploaded yet; Android build skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Run tests, Lint and build unsigned AAB
+        if: steps.source.outputs.found == 'true'
+        working-directory: work/Kindred_1_0_35_Unified
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintRelease :app:bundleRelease
+          test -s app/build/outputs/bundle/release/app-release.aab
+          echo "Android compilation, unit tests, Lint and AAB: SUCCESS" >> "$GITHUB_STEP_SUMMARY"
+          echo "NOTE: This AAB is NOT signed with the original Google Play upload key." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save unsigned AAB and reports
+        if: steps.source.outputs.found == 'true' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kindred-1.0.35-unsigned-aab-and-reports
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            work/Kindred_1_0_35_Unified/app/build/outputs/bundle/release/*.aab
+            work/Kindred_1_0_35_Unified/app/build/reports/
+            work/Kindred_1_0_35_Unified/app/build/test-results/
