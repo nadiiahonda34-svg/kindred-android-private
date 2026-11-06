@@ -49,6 +49,8 @@ jobs:
         shell: bash
         run: |
           if [[ -f android-source/Kindred_1_0_35_Unified_Source.zip ]]; then
+            echo 'b279d59f6eec5cfaacaa5991c68ab97f13d8600c876d819f91db90e467c45a23  android-source/Kindred_1_0_35_Unified_Source.zip' | sha256sum -c -
+            unzip -tq android-source/Kindred_1_0_35_Unified_Source.zip >/dev/null
             mkdir -p work
             unzip -q android-source/Kindred_1_0_35_Unified_Source.zip -d work
             test -f work/Kindred_1_0_35_Unified/gradlew
